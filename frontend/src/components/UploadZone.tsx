@@ -1,10 +1,32 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, Loader2, Sparkles } from 'lucide-react';
+import { Upload, FileText, Loader2, Sparkles, AlertCircle, X } from 'lucide-react';
 
 interface Props {
   onAnalyze: (file: File, jobDesc: string, jobTitle: string) => void;
   loading: boolean;
+}
+
+interface UploadError {
+  code: string;
+  message: string;
+  fileName?: string;
+}
+
+const MAX_SIZE_MB = 10;
+const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
+
+function getFriendlyErrorMessage(code: string, fileName: string): string {
+  switch (code) {
+    case 'file-too-large':
+      return `"${fileName}" exceeds the ${MAX_SIZE_MB} MB size limit. Please choose a smaller file.`;
+    case 'file-invalid-type':
+      return `"${fileName}" is not a supported format. Please upload a PDF file.`;
+    case 'too-many-files':
+      return 'You can only upload one file at a time.';
+    default:
+      return `"${fileName}" could not be uploaded. Please try a different file.`;
+  }
 }
 
 export default function UploadZone({ onAnalyze, loading }: Props) {
@@ -12,17 +34,41 @@ export default function UploadZone({ onAnalyze, loading }: Props) {
   const [jobDesc, setJobDesc] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [showJob, setShowJob] = useState(false);
+  const [uploadError, setUploadError] = useState<UploadError | null>(null);
 
   const onDrop = useCallback((accepted: File[]) => {
+    setUploadError(null);
     if (accepted.length > 0) setFile(accepted[0]);
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, isDragReject, fileRejections } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'] },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024,
+    maxSize: MAX_SIZE,
   });
+
+  // Translate the first dropzone rejection into a user-friendly error message.
+  useEffect(() => {
+    if (fileRejections.length > 0) {
+      const { file: rejectedFile, errors } = fileRejections[0];
+      const primaryError = errors[0];
+      setUploadError({
+        code: primaryError.code,
+        message: getFriendlyErrorMessage(primaryError.code, rejectedFile.name),
+        fileName: rejectedFile.name,
+      });
+    }
+  }, [fileRejections]);
+
+  // Auto-dismiss the error banner after a short delay so it doesn't linger.
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = setTimeout(() => setUploadError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [uploadError]);
+
+  const handleDismissError = () => setUploadError(null);
 
   const handleSubmit = () => {
     if (file) onAnalyze(file, jobDesc, jobTitle);
@@ -36,11 +82,13 @@ export default function UploadZone({ onAnalyze, loading }: Props) {
         className={`
           relative group cursor-pointer rounded-2xl border-2 border-dashed p-12
           transition-all duration-300 ease-out
-          ${isDragActive
-            ? 'border-brand-500 bg-brand-50 scale-[1.02]'
-            : file
-              ? 'border-emerald-400 bg-emerald-50/50'
-              : 'border-gray-300 bg-white hover:border-brand-400 hover:bg-brand-50/30'
+          ${isDragReject
+            ? 'border-red-400 bg-red-50'
+            : isDragActive
+              ? 'border-brand-500 bg-brand-50 scale-[1.02]'
+              : file
+                ? 'border-emerald-400 bg-emerald-50/50'
+                : 'border-gray-300 bg-white hover:border-brand-400 hover:bg-brand-50/30'
           }
         `}
       >
@@ -68,12 +116,33 @@ export default function UploadZone({ onAnalyze, loading }: Props) {
                   {isDragActive ? 'Drop your resume here' : 'Upload your resume'}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Drag & drop a PDF or click to browse · Max 10 MB
+                  Drag & drop a PDF or click to browse · Max {MAX_SIZE_MB} MB
                 </p>
               </div>
             </>
           )}
         </div>
+
+        {/* Error banner */}
+        {uploadError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            onClick={(e) => e.stopPropagation()}
+            className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+            <span className="flex-1">{uploadError.message}</span>
+            <button
+              type="button"
+              onClick={handleDismissError}
+              className="text-red-400 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 rounded"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Optional job description */}
