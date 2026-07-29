@@ -24,6 +24,7 @@ async def analyze(
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size must be under 10 MB.")
 
+    # Validate PDF magic bytes — defends against renamed non-PDF uploads
     if not contents.startswith(b"%PDF-"):
         raise HTTPException(
             status_code=400,
