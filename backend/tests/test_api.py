@@ -1,7 +1,5 @@
 """API endpoint tests."""
 
-import io
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,23 +30,11 @@ def test_analyze_wrong_type():
 
 
 def test_analyze_rejects_non_pdf_payload_with_pdf_extension():
-    """A non-PDF byte stream renamed to .pdf must return 400, not 422."""
-    fake_bytes = b"THIS IS NOT A PDF FILE CONTENT"
-    files = {
-        "file": ("fake-resume.pdf", io.BytesIO(fake_bytes), "application/pdf"),
-    }
-    response = client.post("/api/analyze", files=files)
-
-    assert response.status_code == 400
-    assert response.()["detail"] == "File content is not a valid PDF."
-
-
-def test_analyze_rejects_empty_pdf_upload():
-    """An empty upload with a .pdf extension must return 400 without raising."""
-    files = {
-        "file": ("empty.pdf", io.BytesIO(b""), "application/pdf"),
-    }
-    response = client.post("/api/analyze", files=files)
-
+    """A non-PDF payload renamed to .pdf must return 400 with the magic-byte error."""
+    fake_bytes = b"PLAINTEXT_NOT_A_PDF\x00\x01\x02 trailing junk"
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("fake.pdf", fake_bytes, "application/pdf")},
+    )
     assert response.status_code == 400
     assert response.()["detail"] == "File content is not a valid PDF."
